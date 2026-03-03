@@ -92,11 +92,20 @@ export async function fetchWithFallback(
   url: string,
   signal?: AbortSignal,
 ): Promise<Response> {
+  const tried: string[] = [];
+
   // Attempt 1 — direct fetch (works when CORS headers are present)
   try {
+    console.log(`[download] trying direct: ${url}`);
+    tried.push(`direct: ${url}`);
     const resp = await fetch(url, { signal });
-    if (resp.ok) return resp;
+    if (resp.ok) {
+      console.log(`[download] direct OK (${resp.status})`);
+      return resp;
+    }
+    console.warn(`[download] direct failed: ${resp.status} ${resp.statusText}`);
   } catch (err) {
+    console.warn(`[download] direct error:`, err);
     // Only fall through to proxies for CORS / network errors
     if (!isCorsOrNetworkError(err)) throw err;
   }
@@ -106,15 +115,25 @@ export async function fetchWithFallback(
   for (let i = 0; i < CORS_PROXIES.length; i++) {
     const proxied = CORS_PROXIES[i](url);
     try {
+      console.log(`[download] trying proxy ${i + 1}: ${proxied}`);
+      tried.push(`proxy${i + 1}: ${proxied}`);
       const resp = await fetch(proxied, { signal });
-      if (resp.ok) return resp;
+      if (resp.ok) {
+        console.log(`[download] proxy ${i + 1} OK (${resp.status})`);
+        return resp;
+      }
+      console.warn(`[download] proxy ${i + 1} failed: ${resp.status} ${resp.statusText}`);
       lastResponse = resp;
     } catch (err) {
+      console.warn(`[download] proxy ${i + 1} error:`, err);
       // On the last proxy, rethrow so the caller sees the error
       if (i === CORS_PROXIES.length - 1) throw err;
       // Otherwise try the next proxy
     }
   }
+
+  console.error(`[download] all attempts failed for: ${url}`);
+  console.error(`[download] URLs tried:`, tried);
 
   // All proxies returned non-ok responses; return the last one so the
   // caller can inspect the status code.
@@ -127,13 +146,14 @@ async function downloadBookOnce(
   onProgress: (progress: DownloadProgress) => void,
   abortSignal?: AbortSignal
 ): Promise<DownloadResult> {
+  console.log(`[download] starting ${book.name}: ${book.url}`);
   const response = await fetchWithFallback(book.url, abortSignal);
 
   if (!response.ok) {
     return {
       bookNumber: book.number,
       success: false,
-      error: `Server returned ${response.status} ${response.statusText}`,
+      error: `Server returned ${response.status} ${response.statusText} for ${book.url}`,
     };
   }
 
@@ -279,7 +299,7 @@ export async function downloadBook(
         return {
           bookNumber: book.number,
           success: false,
-          error: 'Download failed: unable to reach the server. Check your connection and try again.',
+          error: `Download failed: unable to reach the server for ${book.url}. Check your connection and try again.`,
         };
       }
 
