@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { downloadBook } from '../../src/lib/downloadManager';
+import { downloadBook, fetchWithFallback } from '../../src/lib/downloadManager';
 import { books } from '../../src/data/books';
 
 // Mock the fileSystem module
@@ -8,9 +8,53 @@ vi.mock('../../src/lib/fileSystem', () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 
+function okResponse(data: Uint8Array = new Uint8Array([1, 2, 3])) {
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-length': String(data.length) }),
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(data);
+        controller.close();
+      },
+    }),
+  };
+}
+
 describe('downloadManager', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe('fetchWithFallback', () => {
+    it('returns direct response when fetch succeeds', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+      const resp = await fetchWithFallback('https://example.com/file.mp3');
+      expect(resp.ok).toBe(true);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to CORS proxy when direct fetch throws TypeError', async () => {
+      globalThis.fetch = vi.fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce({ ok: true });
+
+      const resp = await fetchWithFallback('https://example.com/file.mp3');
+      expect(resp.ok).toBe(true);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+      // Second call should use proxy URL
+      const secondCallUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[1][0];
+      expect(secondCallUrl).toContain('corsproxy.io');
+    });
+
+    it('re-throws non-CORS errors without trying proxy', async () => {
+      const err = new DOMException('Aborted', 'AbortError');
+      globalThis.fetch = vi.fn().mockRejectedValue(err);
+
+      await expect(fetchWithFallback('https://example.com/file.mp3')).rejects.toThrow();
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('downloadBook', () => {
@@ -123,6 +167,25 @@ describe('downloadManager', () => {
       expect(onProgress).toHaveBeenCalledWith(
         expect.objectContaining({ percent: 0 })
       );
+    });
+
+    it('succeeds via CORS proxy when direct fetch fails', async () => {
+      globalThis.fetch = vi.fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(okResponse());
+
+      const result = await downloadBook(genesis, mockRootHandle, onProgress);
+      expect(result.success).toBe(true);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('shows friendly message when both direct and proxy fetch fail', async () => {
+      globalThis.fetch = vi.fn()
+        .mockRejectedValue(new TypeError('Failed to fetch'));
+
+      const result = await downloadBook(genesis, mockRootHandle, onProgress);
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('unable to reach the server');
     });
   });
 });

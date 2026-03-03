@@ -46,27 +46,52 @@ export async function getBookDirectory(
   rootHandle: FileSystemDirectoryHandle,
   folderName: string
 ): Promise<FileSystemDirectoryHandle> {
-  // Check if root already contains Books/Audio/Bible path
-  // Create: <root>/Books/Audio/Bible/<folderName>/
+  // Detect which level of Books/Audio/Bible the user selected and navigate accordingly.
+  // Supported scenarios:
+  //   - User picks root (e.g. Internal storage) → create Books/Audio/Bible/<folderName>
+  //   - User picks "Books"                      → create Audio/Bible/<folderName>
+  //   - User picks "Audio"                      → create Bible/<folderName>
+  //   - User picks "Bible"                      → create <folderName>
   let current = rootHandle;
 
-  // Check if root is already the Bible directory by looking for expected structure
   try {
-    // Try to detect if we're already inside Books/Audio/Bible
-    const entries: string[] = [];
+    const entries = new Set<string>();
     for await (const entry of current.values()) {
-      entries.push(entry.name);
+      entries.add(entry.name);
     }
 
-    // If the directory already has numbered book folders, assume we're at the Bible level
-    const hasBookFolders = entries.some((name) => /^\d{2}-/.test(name));
+    // If the directory already has numbered book folders (e.g. "43-John"), we're at Bible level
+    const hasBookFolders = [...entries].some((name) => /^\d{2}-/.test(name));
     if (hasBookFolders) {
+      return getOrCreateSubDir(current, folderName);
+    }
+
+    // Detect intermediate levels by checking for known subdirectory names
+    if (entries.has('Bible')) {
+      // We're at the Audio level
+      current = await getOrCreateSubDir(current, 'Bible');
+      return getOrCreateSubDir(current, folderName);
+    }
+
+    if (entries.has('Audio')) {
+      // We're at the Books level
+      current = await getOrCreateSubDir(current, 'Audio');
+      current = await getOrCreateSubDir(current, 'Bible');
+      return getOrCreateSubDir(current, folderName);
+    }
+
+    if (entries.has('Books')) {
+      // We're at the root level and Books already exists
+      current = await getOrCreateSubDir(current, 'Books');
+      current = await getOrCreateSubDir(current, 'Audio');
+      current = await getOrCreateSubDir(current, 'Bible');
       return getOrCreateSubDir(current, folderName);
     }
   } catch {
     // Ignore, proceed with full path creation
   }
 
+  // No existing structure detected — create the full path
   current = await getOrCreateSubDir(current, 'Books');
   current = await getOrCreateSubDir(current, 'Audio');
   current = await getOrCreateSubDir(current, 'Bible');
