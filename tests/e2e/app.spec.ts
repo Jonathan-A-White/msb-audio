@@ -60,6 +60,6 @@ test.describe('Book List', () => {
     await page.goto('/');
     // Check a few known book numbers
     await expect(page.getByText('01').first()).toBeVisible();
-    await expect(page.getByText('66')).toBeVisible();
+    await expect(page.locator('.book-number').getByText('66')).toBeVisible();
   });
 });
