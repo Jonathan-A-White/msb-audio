@@ -122,8 +122,15 @@ export async function writeFile(
   const writable = await fileHandle.createWritable();
   try {
     await writable.write(data as unknown as BufferSource);
-  } finally {
     await writable.close();
+  } catch (err) {
+    // Abort discards the temporary write instead of committing empty/corrupt data
+    try {
+      await writable.abort();
+    } catch {
+      /* ignore abort errors */
+    }
+    throw err;
   }
 }
 
