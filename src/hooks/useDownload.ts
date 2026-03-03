@@ -11,15 +11,17 @@ import {
   matchBookFromFilename,
   type BulkProgress,
 } from '../lib/downloadManager';
-import { pickMp3File, pickMp3Files } from '../lib/fileSystem';
+import { pickMp3File, pickMp3Files, scanForMp3Files } from '../lib/fileSystem';
 
 interface UseDownloadReturn {
   state: AllDownloadState;
   bulkProgress: BulkProgress | null;
   isBulkImporting: boolean;
+  lastScanCount: number | null;
   openBookInBrowser: (book: BookWithDerived) => void;
   importSingle: (book: BookWithDerived) => Promise<void>;
   importFiles: () => Promise<void>;
+  scanAndImport: () => Promise<void>;
   cancelBulk: () => void;
 }
 
@@ -29,6 +31,7 @@ export function useDownload(
   const [state, setState] = useState<AllDownloadState>(loadState);
   const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
   const [isBulkImporting, setIsBulkImporting] = useState(false);
+  const [lastScanCount, setLastScanCount] = useState<number | null>(null);
   const bulkAbortRef = useRef<AbortController | null>(null);
 
   const openBookInBrowser = useCallback((book: BookWithDerived) => {
@@ -133,6 +136,72 @@ export function useDownload(
     }
   }, [rootHandle]);
 
+  const scanAndImport = useCallback(async () => {
+    if (!rootHandle) return;
+
+    setLastScanCount(null);
+
+    // Scan the root folder for MSB MP3 files — no file picker needed
+    let files: File[];
+    try {
+      files = await scanForMp3Files(rootHandle);
+    } catch (err) {
+      console.error('[scan] failed to scan directory:', err);
+      return;
+    }
+
+    // Match found files to known books
+    const matched: Array<{ book: BookWithDerived; file: File }> = [];
+    for (const file of files) {
+      const book = matchBookFromFilename(file.name);
+      if (book) matched.push({ book, file });
+    }
+
+    setLastScanCount(matched.length);
+    if (matched.length === 0) return;
+
+    const controller = new AbortController();
+    bulkAbortRef.current = controller;
+    setIsBulkImporting(true);
+
+    try {
+      for (let i = 0; i < matched.length; i++) {
+        if (controller.signal.aborted) break;
+
+        const { book, file } = matched[i];
+        setBulkProgress({
+          currentIndex: i + 1,
+          totalBooks: matched.length,
+          currentBook: book,
+        });
+
+        setState((prev) => setBookStatus(prev, book.number, 'downloading', 50));
+
+        try {
+          const data = new Uint8Array(await file.arrayBuffer());
+          const result = await importBookFromData(data, book, rootHandle);
+
+          if (result.success) {
+            setState((prev) => setBookStatus(prev, book.number, 'complete', 100));
+          } else {
+            setState((prev) =>
+              setBookStatus(prev, book.number, 'error', 0, result.error)
+            );
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Import failed';
+          setState((prev) =>
+            setBookStatus(prev, book.number, 'error', 0, message)
+          );
+        }
+      }
+    } finally {
+      setIsBulkImporting(false);
+      setBulkProgress(null);
+      bulkAbortRef.current = null;
+    }
+  }, [rootHandle]);
+
   const cancelBulk = useCallback(() => {
     bulkAbortRef.current?.abort();
   }, []);
@@ -141,9 +210,11 @@ export function useDownload(
     state,
     bulkProgress,
     isBulkImporting,
+    lastScanCount,
     openBookInBrowser,
     importSingle,
     importFiles,
+    scanAndImport,
     cancelBulk,
   };
 }

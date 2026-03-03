@@ -7,7 +7,10 @@ interface BulkActionsProps {
   isBulkImporting: boolean;
   bulkProgress: BulkProgress | null;
   state: AllDownloadState;
+  lastScanCount: number | null;
+  onScanAndImport: () => void;
   onImportFiles: () => void;
+  onCancelBulk: () => void;
 }
 
 export function BulkActions({
@@ -15,7 +18,10 @@ export function BulkActions({
   isBulkImporting,
   bulkProgress,
   state,
+  lastScanCount,
+  onScanAndImport,
   onImportFiles,
+  onCancelBulk,
 }: BulkActionsProps) {
   const allCounts = countByStatus(state);
 
@@ -27,6 +33,9 @@ export function BulkActions({
             Importing {bulkProgress.currentIndex} of{' '}
             {bulkProgress.totalBooks} ({bulkProgress.currentBook.name})
           </p>
+          <button className="btn btn-cancel" onClick={onCancelBulk}>
+            Cancel
+          </button>
         </div>
       </div>
     );
@@ -35,18 +44,35 @@ export function BulkActions({
   return (
     <div className="bulk-actions">
       <p className="bulk-hint">
-        Tap Download to get files in Chrome, then Import to add them to your audio player.
+        1. Tap Download to get files in Chrome.
+        <br />
+        2. Use your file manager to move them into this folder.
+        <br />
+        3. Tap <strong>Scan &amp; Import</strong> to organize them.
       </p>
       <div className="bulk-buttons">
         <button
           className="btn btn-bulk"
           disabled={disabled}
-          onClick={onImportFiles}
+          onClick={onScanAndImport}
         >
-          Import Files
+          Scan &amp; Import
           <span className="btn-count">{allCounts.complete}/66</span>
         </button>
+        <button
+          className="btn btn-bulk-secondary"
+          disabled={disabled}
+          onClick={onImportFiles}
+        >
+          Pick Files Instead
+        </button>
       </div>
+      {lastScanCount !== null && lastScanCount === 0 && (
+        <p className="bulk-hint scan-result">
+          No MSB audio files found in folder. Move your downloaded MP3 files
+          into the selected folder first.
+        </p>
+      )}
     </div>
   );
 }

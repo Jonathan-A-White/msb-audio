@@ -128,3 +128,24 @@ export async function pickMp3Files(): Promise<File[]> {
   }
   return files;
 }
+
+/**
+ * Scan the root directory for MSB MP3 files (e.g. MSB_01_Gen.mp3).
+ * Returns File objects for every matching file found at the top level.
+ * This avoids showOpenFilePicker entirely — the app already has
+ * readwrite permission on the root directory.
+ */
+export async function scanForMp3Files(
+  rootHandle: FileSystemDirectoryHandle,
+): Promise<File[]> {
+  const files: File[] = [];
+  for await (const entry of rootHandle.values()) {
+    if (entry.kind !== 'file') continue;
+    if (!entry.name.toLowerCase().endsWith('.mp3')) continue;
+    // Match MSB naming pattern: MSB_NN_Abbr.mp3
+    if (!/^MSB_\d{2}_/i.test(entry.name)) continue;
+    const fileHandle = await rootHandle.getFileHandle(entry.name);
+    files.push(await fileHandle.getFile());
+  }
+  return files;
+}

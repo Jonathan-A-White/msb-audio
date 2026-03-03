@@ -19,12 +19,12 @@ export function App() {
     state,
     bulkProgress,
     isBulkImporting,
+    lastScanCount,
     openBookInBrowser,
-    importSingle,
     importFiles,
+    scanAndImport,
+    cancelBulk,
   } = useDownload(handle);
-
-  const importDisabled = !handle || !isSupported || isBulkImporting;
 
   return (
     <div className="app">
@@ -41,14 +41,15 @@ export function App() {
         isBulkImporting={isBulkImporting}
         bulkProgress={bulkProgress}
         state={state}
+        lastScanCount={lastScanCount}
+        onScanAndImport={scanAndImport}
         onImportFiles={importFiles}
+        onCancelBulk={cancelBulk}
       />
 
       <BookList
         state={state}
-        importDisabled={importDisabled}
         onOpenInBrowser={openBookInBrowser}
-        onImport={importSingle}
       />
     </div>
   );
