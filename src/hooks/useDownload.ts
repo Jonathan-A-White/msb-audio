@@ -11,7 +11,7 @@ import {
   matchBookFromFilename,
   type BulkProgress,
 } from '../lib/downloadManager';
-import { pickMp3File, pickSourceDirectory, scanForMsbFiles } from '../lib/fileSystem';
+import { pickMp3File, pickMp3Files } from '../lib/fileSystem';
 
 interface UseDownloadReturn {
   state: AllDownloadState;
@@ -19,7 +19,7 @@ interface UseDownloadReturn {
   isBulkImporting: boolean;
   openBookInBrowser: (book: BookWithDerived) => void;
   importSingle: (book: BookWithDerived) => Promise<void>;
-  importFromFolder: () => Promise<void>;
+  importFiles: () => Promise<void>;
   cancelBulk: () => void;
 }
 
@@ -71,39 +71,31 @@ export function useDownload(
     [rootHandle]
   );
 
-  const importFromFolder = useCallback(async () => {
+  const importFiles = useCallback(async () => {
     if (!rootHandle) return;
 
-    let sourceHandle: FileSystemDirectoryHandle;
+    let files: File[];
     try {
-      sourceHandle = await pickSourceDirectory();
+      files = await pickMp3Files();
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       throw err;
     }
+
+    // Match selected files to known books by filename
+    const matched: Array<{ book: BookWithDerived; file: File }> = [];
+    for (const file of files) {
+      const book = matchBookFromFilename(file.name);
+      if (book) matched.push({ book, file });
+    }
+
+    if (matched.length === 0) return;
 
     const controller = new AbortController();
     bulkAbortRef.current = controller;
     setIsBulkImporting(true);
 
     try {
-      const msbFiles = await scanForMsbFiles(sourceHandle);
-      const entries = [...msbFiles.entries()];
-
-      // Filter to files that match known books
-      const matched: Array<{ book: BookWithDerived; file: File }> = [];
-      for (const [filename, file] of entries) {
-        const book = matchBookFromFilename(filename);
-        if (book) matched.push({ book, file });
-      }
-
-      if (matched.length === 0) {
-        setIsBulkImporting(false);
-        setBulkProgress(null);
-        bulkAbortRef.current = null;
-        return;
-      }
-
       for (let i = 0; i < matched.length; i++) {
         if (controller.signal.aborted) break;
 
@@ -151,7 +143,7 @@ export function useDownload(
     isBulkImporting,
     openBookInBrowser,
     importSingle,
-    importFromFolder,
+    importFiles,
     cancelBulk,
   };
 }
