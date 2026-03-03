@@ -239,6 +239,7 @@ async function downloadBookOnce(
   }
 
   // Write to file system — retry on stale directory handle errors
+  // (common on Android Chrome where cached handles go stale quickly)
   for (let fsAttempt = 0; fsAttempt < 3; fsAttempt++) {
     try {
       const bookDir = await getBookDirectory(rootHandle, book.folderName);
@@ -247,10 +248,14 @@ async function downloadBookOnce(
     } catch (fsErr) {
       if (fsAttempt < 2 && isStaleHandleError(fsErr)) {
         invalidateBibleDirCache(rootHandle);
-        await delay(200);
+        await delay(500 * (fsAttempt + 1));
         continue;
       }
-      throw fsErr;
+      return {
+        bookNumber: book.number,
+        success: false,
+        error: fsErr instanceof Error ? fsErr.message : 'File system write failed',
+      };
     }
   }
 
@@ -405,6 +410,7 @@ export async function importBookFromData(
   }
 
   // Write to file system — retry on stale directory handle errors
+  // (common on Android Chrome where cached handles go stale quickly)
   for (let fsAttempt = 0; fsAttempt < 3; fsAttempt++) {
     try {
       const bookDir = await getBookDirectory(rootHandle, book.folderName);
@@ -413,10 +419,14 @@ export async function importBookFromData(
     } catch (fsErr) {
       if (fsAttempt < 2 && isStaleHandleError(fsErr)) {
         invalidateBibleDirCache(rootHandle);
-        await delay(200);
+        await delay(500 * (fsAttempt + 1));
         continue;
       }
-      throw fsErr;
+      return {
+        bookNumber: book.number,
+        success: false,
+        error: fsErr instanceof Error ? fsErr.message : 'File system write failed',
+      };
     }
   }
 
