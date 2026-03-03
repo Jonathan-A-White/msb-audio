@@ -1,0 +1,271 @@
+.app {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
+}
+
+/* Header */
+.header {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--color-gray-200);
+  margin-bottom: 16px;
+}
+
+.header-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: 12px;
+}
+
+.directory-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hint {
+  font-size: 0.875rem;
+  color: var(--color-gray-500);
+}
+
+/* Alerts */
+.alert {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+}
+
+.alert-error {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 48px;
+  padding: 10px 16px;
+  transition: opacity 0.15s;
+  touch-action: manipulation;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:active:not(:disabled) {
+  opacity: 0.8;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-white);
+}
+
+.btn-directory {
+  width: 100%;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.btn-count {
+  font-weight: 400;
+  opacity: 0.7;
+  font-size: 0.75rem;
+}
+
+/* Bulk Actions */
+.bulk-actions {
+  margin-bottom: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.bulk-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bulk-again {
+  margin-top: 8px;
+}
+
+.btn-bulk {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-primary);
+  color: var(--color-white);
+  flex-direction: column;
+  gap: 2px;
+}
+
+.btn-bulk-again {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-gray-100);
+  color: var(--color-gray-700);
+  border: 1px solid var(--color-gray-300);
+  font-size: 0.75rem;
+  min-height: 40px;
+}
+
+.btn-cancel {
+  background: var(--color-error);
+  color: var(--color-white);
+  min-height: 40px;
+}
+
+.bulk-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bulk-progress-text {
+  flex: 1;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+/* Book Sections */
+.book-section {
+  margin-bottom: 8px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid var(--color-primary);
+  cursor: pointer;
+  min-height: 48px;
+  touch-action: manipulation;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.section-toggle {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  width: 24px;
+  text-align: center;
+}
+
+/* Book Row */
+.book-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-gray-100);
+}
+
+.book-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.book-number {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-gray-400);
+  min-width: 24px;
+}
+
+.book-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.status-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.status-badge--complete {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.status-badge--error {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.status-badge--downloading {
+  background: var(--color-warning-bg);
+  color: var(--color-gray-700);
+}
+
+/* Progress Bar */
+.progress-bar-container {
+  height: 6px;
+  background: var(--color-gray-200);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+/* Book Error */
+.book-error {
+  font-size: 0.75rem;
+  color: var(--color-error);
+}
+
+/* Book Actions */
+.book-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-download {
+  background: var(--color-primary);
+  color: var(--color-white);
+  min-height: 40px;
+  font-size: 0.8125rem;
+}
+
+.btn-again {
+  background: var(--color-gray-100);
+  color: var(--color-gray-700);
+  border: 1px solid var(--color-gray-300);
+  min-height: 40px;
+  font-size: 0.8125rem;
+}
+
+.btn-cancel-small {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  min-height: 40px;
+  font-size: 0.8125rem;
+}
