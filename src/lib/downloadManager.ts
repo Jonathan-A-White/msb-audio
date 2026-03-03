@@ -20,6 +20,35 @@ export interface BulkProgress {
   currentBook: BookWithDerived;
 }
 
+// CORS proxy used as fallback when the direct fetch fails (e.g. missing
+// Access-Control-Allow-Origin header on openbible.com).
+const CORS_PROXY = 'https://corsproxy.io/?';
+
+function isCorsOrNetworkError(err: unknown): boolean {
+  if (err instanceof TypeError && /failed to fetch/i.test(err.message)) {
+    return true;
+  }
+  return false;
+}
+
+export async function fetchWithFallback(
+  url: string,
+  signal?: AbortSignal,
+): Promise<Response> {
+  // Attempt 1 — direct fetch (works when CORS headers are present)
+  try {
+    const resp = await fetch(url, { signal });
+    if (resp.ok) return resp;
+  } catch (err) {
+    // Only fall through to proxy for CORS / network errors
+    if (!isCorsOrNetworkError(err)) throw err;
+  }
+
+  // Attempt 2 — CORS proxy fallback
+  const proxied = `${CORS_PROXY}${encodeURIComponent(url)}`;
+  return fetch(proxied, { signal });
+}
+
 export async function downloadBook(
   book: BookWithDerived,
   rootHandle: FileSystemDirectoryHandle,
@@ -27,7 +56,7 @@ export async function downloadBook(
   abortSignal?: AbortSignal
 ): Promise<DownloadResult> {
   try {
-    const response = await fetch(book.url, { signal: abortSignal });
+    const response = await fetchWithFallback(book.url, abortSignal);
 
     if (!response.ok) {
       return {
@@ -106,6 +135,15 @@ export async function downloadBook(
         bookNumber: book.number,
         success: false,
         error: 'Storage full — free up space and try again',
+      };
+    }
+
+    // Provide a clearer message for CORS / network failures
+    if (/failed to fetch/i.test(message)) {
+      return {
+        bookNumber: book.number,
+        success: false,
+        error: 'Download failed: unable to reach the server. Check your connection and try again.',
       };
     }
 
