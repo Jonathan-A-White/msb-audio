@@ -21,7 +21,7 @@ export function App() {
     isBulkImporting,
     openBookInBrowser,
     importSingle,
-    importFromFolder,
+    importFiles,
   } = useDownload(handle);
 
   const importDisabled = !handle || !isSupported || isBulkImporting;
@@ -41,7 +41,7 @@ export function App() {
         isBulkImporting={isBulkImporting}
         bulkProgress={bulkProgress}
         state={state}
-        onImportFromFolder={importFromFolder}
+        onImportFiles={importFiles}
       />
 
       <BookList

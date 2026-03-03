@@ -119,19 +119,14 @@ export async function pickMp3File(): Promise<File> {
   return handle.getFile();
 }
 
-export async function pickSourceDirectory(): Promise<FileSystemDirectoryHandle> {
-  return window.showDirectoryPicker({ mode: 'read' });
-}
-
-export async function scanForMsbFiles(
-  dirHandle: FileSystemDirectoryHandle
-): Promise<Map<string, File>> {
-  const results = new Map<string, File>();
-  for await (const entry of dirHandle.values()) {
-    if (entry.kind === 'file' && /^MSB_\d{2}_[A-Za-z0-9]+/i.test(entry.name) && entry.name.toLowerCase().endsWith('.mp3')) {
-      const fileHandle = await dirHandle.getFileHandle(entry.name);
-      results.set(entry.name, await fileHandle.getFile());
-    }
+export async function pickMp3Files(): Promise<File[]> {
+  const handles = await window.showOpenFilePicker({
+    multiple: true,
+    types: [{ description: 'MP3 audio files', accept: { 'audio/mpeg': ['.mp3'] } }],
+  });
+  const files: File[] = [];
+  for (const handle of handles) {
+    files.push(await handle.getFile());
   }
-  return results;
+  return files;
 }

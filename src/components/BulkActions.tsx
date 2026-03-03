@@ -7,7 +7,7 @@ interface BulkActionsProps {
   isBulkImporting: boolean;
   bulkProgress: BulkProgress | null;
   state: AllDownloadState;
-  onImportFromFolder: () => void;
+  onImportFiles: () => void;
 }
 
 export function BulkActions({
@@ -15,7 +15,7 @@ export function BulkActions({
   isBulkImporting,
   bulkProgress,
   state,
-  onImportFromFolder,
+  onImportFiles,
 }: BulkActionsProps) {
   const allCounts = countByStatus(state);
 
@@ -41,9 +41,9 @@ export function BulkActions({
         <button
           className="btn btn-bulk"
           disabled={disabled}
-          onClick={onImportFromFolder}
+          onClick={onImportFiles}
         >
-          Import from Folder
+          Import Files
           <span className="btn-count">{allCounts.complete}/66</span>
         </button>
       </div>
