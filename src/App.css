@@ -242,30 +242,41 @@
   color: var(--color-error);
 }
 
+/* Bulk Hint */
+.bulk-hint {
+  font-size: 0.8125rem;
+  color: var(--color-gray-500);
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
 /* Book Actions */
 .book-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
 }
 
-.btn-download {
+.btn-download-link {
+  background: var(--color-gray-100);
+  color: var(--color-primary);
+  border: 1px solid var(--color-gray-300);
+  min-height: 40px;
+  font-size: 0.8125rem;
+}
+
+.btn-import {
   background: var(--color-primary);
   color: var(--color-white);
   min-height: 40px;
   font-size: 0.8125rem;
 }
 
-.btn-again {
-  background: var(--color-gray-100);
-  color: var(--color-gray-700);
-  border: 1px solid var(--color-gray-300);
-  min-height: 40px;
+.importing-label {
   font-size: 0.8125rem;
-}
-
-.btn-cancel-small {
-  background: var(--color-error-bg);
-  color: var(--color-error);
+  font-weight: 600;
+  color: var(--color-primary);
   min-height: 40px;
-  font-size: 0.8125rem;
+  display: flex;
+  align-items: center;
 }

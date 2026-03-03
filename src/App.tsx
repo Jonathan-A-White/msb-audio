@@ -18,16 +18,13 @@ export function App() {
   const {
     state,
     bulkProgress,
-    isBulkDownloading,
-    downloadSingle,
-    downloadAll,
-    downloadOT,
-    downloadNT,
-    cancelBulk,
-    cancelSingle,
+    isBulkImporting,
+    openBookInBrowser,
+    importSingle,
+    importFromFolder,
   } = useDownload(handle);
 
-  const downloadsDisabled = !handle || !isSupported || isBulkDownloading;
+  const importDisabled = !handle || !isSupported || isBulkImporting;
 
   return (
     <div className="app">
@@ -41,20 +38,17 @@ export function App() {
 
       <BulkActions
         disabled={!handle || !isSupported}
-        isBulkDownloading={isBulkDownloading}
+        isBulkImporting={isBulkImporting}
         bulkProgress={bulkProgress}
         state={state}
-        onDownloadAll={downloadAll}
-        onDownloadOT={downloadOT}
-        onDownloadNT={downloadNT}
-        onCancel={cancelBulk}
+        onImportFromFolder={importFromFolder}
       />
 
       <BookList
         state={state}
-        disabled={downloadsDisabled}
-        onDownload={downloadSingle}
-        onCancel={cancelSingle}
+        importDisabled={importDisabled}
+        onOpenInBrowser={openBookInBrowser}
+        onImport={importSingle}
       />
     </div>
   );

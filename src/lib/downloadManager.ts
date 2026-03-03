@@ -1,4 +1,5 @@
 import type { BookWithDerived } from '../data/books';
+import { books } from '../data/books';
 import { getBookDirectory, writeFile } from './fileSystem';
 
 export interface DownloadProgress {
@@ -348,4 +349,44 @@ export async function downloadBulk(
 
     if (abortSignal.aborted) break;
   }
+}
+
+// --- Import-based flow (open in Chrome + import from file system) ---
+
+export function openInBrowser(url: string): void {
+  window.open(url, '_blank');
+}
+
+export function matchBookFromFilename(filename: string): BookWithDerived | undefined {
+  const match = filename.match(/^MSB_(\d{2})_([A-Za-z0-9]+)/i);
+  if (!match) return undefined;
+  const num = parseInt(match[1], 10);
+  return books.find((b) => b.number === num);
+}
+
+export async function importBookFromData(
+  data: Uint8Array,
+  book: BookWithDerived,
+  rootHandle: FileSystemDirectoryHandle,
+): Promise<DownloadResult> {
+  if (data.length < MIN_MP3_SIZE) {
+    return {
+      bookNumber: book.number,
+      success: false,
+      error: 'File too small — this may not be a valid audio file.',
+    };
+  }
+
+  if (!isValidMp3(data)) {
+    return {
+      bookNumber: book.number,
+      success: false,
+      error: 'Invalid file — not a valid MP3 audio file.',
+    };
+  }
+
+  const bookDir = await getBookDirectory(rootHandle, book.folderName);
+  await writeFile(bookDir, book.fileName, data);
+
+  return { bookNumber: book.number, success: true };
 }

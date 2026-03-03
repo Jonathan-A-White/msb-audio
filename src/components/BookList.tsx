@@ -7,27 +7,27 @@ import { BookRow } from './BookRow';
 
 interface BookListProps {
   state: AllDownloadState;
-  disabled: boolean;
-  onDownload: (book: BookWithDerived) => void;
-  onCancel: (bookNumber: number) => void;
+  importDisabled: boolean;
+  onOpenInBrowser: (book: BookWithDerived) => void;
+  onImport: (book: BookWithDerived) => void;
 }
 
 interface SectionProps {
   title: string;
   books: BookWithDerived[];
   state: AllDownloadState;
-  disabled: boolean;
-  onDownload: (book: BookWithDerived) => void;
-  onCancel: (bookNumber: number) => void;
+  importDisabled: boolean;
+  onOpenInBrowser: (book: BookWithDerived) => void;
+  onImport: (book: BookWithDerived) => void;
 }
 
 function Section({
   title,
   books,
   state,
-  disabled,
-  onDownload,
-  onCancel,
+  importDisabled,
+  onOpenInBrowser,
+  onImport,
 }: SectionProps) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -49,9 +49,9 @@ function Section({
               key={book.number}
               book={book}
               bookState={getBookState(state, book.number)}
-              disabled={disabled}
-              onDownload={onDownload}
-              onCancel={onCancel}
+              importDisabled={importDisabled}
+              onOpenInBrowser={onOpenInBrowser}
+              onImport={onImport}
             />
           ))}
         </div>
@@ -60,24 +60,24 @@ function Section({
   );
 }
 
-export function BookList({ state, disabled, onDownload, onCancel }: BookListProps) {
+export function BookList({ state, importDisabled, onOpenInBrowser, onImport }: BookListProps) {
   return (
     <div className="book-list">
       <Section
         title="Old Testament"
         books={otBooks}
         state={state}
-        disabled={disabled}
-        onDownload={onDownload}
-        onCancel={onCancel}
+        importDisabled={importDisabled}
+        onOpenInBrowser={onOpenInBrowser}
+        onImport={onImport}
       />
       <Section
         title="New Testament"
         books={ntBooks}
         state={state}
-        disabled={disabled}
-        onDownload={onDownload}
-        onCancel={onCancel}
+        importDisabled={importDisabled}
+        onOpenInBrowser={onOpenInBrowser}
+        onImport={onImport}
       />
     </div>
   );
