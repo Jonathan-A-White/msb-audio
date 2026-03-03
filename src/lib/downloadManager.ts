@@ -1,6 +1,6 @@
 import type { BookWithDerived } from '../data/books';
 import { books } from '../data/books';
-import { getBookDirectory, writeFile } from './fileSystem';
+import { getBookDirectory, writeFile, invalidateBibleDirCache } from './fileSystem';
 
 export interface DownloadProgress {
   bookNumber: number;
@@ -87,6 +87,13 @@ function isTransientError(err: unknown): boolean {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isStaleHandleError(err: unknown): boolean {
+  return (
+    err instanceof DOMException &&
+    err.message.includes('state cached in an interface object')
+  );
 }
 
 export async function fetchWithFallback(
@@ -231,9 +238,21 @@ async function downloadBookOnce(
     };
   }
 
-  // Write to file system
-  const bookDir = await getBookDirectory(rootHandle, book.folderName);
-  await writeFile(bookDir, book.fileName, data);
+  // Write to file system — retry on stale directory handle errors
+  for (let fsAttempt = 0; fsAttempt < 3; fsAttempt++) {
+    try {
+      const bookDir = await getBookDirectory(rootHandle, book.folderName);
+      await writeFile(bookDir, book.fileName, data);
+      return { bookNumber: book.number, success: true };
+    } catch (fsErr) {
+      if (fsAttempt < 2 && isStaleHandleError(fsErr)) {
+        invalidateBibleDirCache(rootHandle);
+        await delay(200);
+        continue;
+      }
+      throw fsErr;
+    }
+  }
 
   return { bookNumber: book.number, success: true };
 }
@@ -385,8 +404,21 @@ export async function importBookFromData(
     };
   }
 
-  const bookDir = await getBookDirectory(rootHandle, book.folderName);
-  await writeFile(bookDir, book.fileName, data);
+  // Write to file system — retry on stale directory handle errors
+  for (let fsAttempt = 0; fsAttempt < 3; fsAttempt++) {
+    try {
+      const bookDir = await getBookDirectory(rootHandle, book.folderName);
+      await writeFile(bookDir, book.fileName, data);
+      return { bookNumber: book.number, success: true };
+    } catch (fsErr) {
+      if (fsAttempt < 2 && isStaleHandleError(fsErr)) {
+        invalidateBibleDirCache(rootHandle);
+        await delay(200);
+        continue;
+      }
+      throw fsErr;
+    }
+  }
 
   return { bookNumber: book.number, success: true };
 }

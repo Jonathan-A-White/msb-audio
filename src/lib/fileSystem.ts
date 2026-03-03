@@ -42,16 +42,26 @@ async function getOrCreateSubDir(
   return parent.getDirectoryHandle(name, { create: true });
 }
 
-export async function getBookDirectory(
-  rootHandle: FileSystemDirectoryHandle,
-  folderName: string
+// Cache the Bible-level directory handle per root handle to avoid repeated
+// directory enumeration, which triggers stale-cache errors on mobile Chrome
+// when directory contents change between bulk-import iterations.
+const bibleDirCache = new WeakMap<FileSystemDirectoryHandle, FileSystemDirectoryHandle>();
+
+export function invalidateBibleDirCache(
+  rootHandle: FileSystemDirectoryHandle
+): void {
+  bibleDirCache.delete(rootHandle);
+}
+
+async function detectBibleDirectory(
+  rootHandle: FileSystemDirectoryHandle
 ): Promise<FileSystemDirectoryHandle> {
   // Detect which level of Books/Audio/Bible the user selected and navigate accordingly.
   // Supported scenarios:
-  //   - User picks root (e.g. Internal storage) → create Books/Audio/Bible/<folderName>
-  //   - User picks "Books"                      → create Audio/Bible/<folderName>
-  //   - User picks "Audio"                      → create Bible/<folderName>
-  //   - User picks "Bible"                      → create <folderName>
+  //   - User picks root (e.g. Internal storage) → create Books/Audio/Bible
+  //   - User picks "Books"                      → create Audio/Bible
+  //   - User picks "Audio"                      → create Bible
+  //   - User picks "Bible"                      → already at Bible level
   let current = rootHandle;
 
   try {
@@ -63,29 +73,23 @@ export async function getBookDirectory(
     // If the directory already has numbered book folders (e.g. "43-John"), we're at Bible level
     const hasBookFolders = [...entries].some((name) => /^\d{2}-/.test(name));
     if (hasBookFolders) {
-      return getOrCreateSubDir(current, folderName);
+      return current;
     }
 
     // Detect intermediate levels by checking for known subdirectory names
     if (entries.has('Bible')) {
-      // We're at the Audio level
-      current = await getOrCreateSubDir(current, 'Bible');
-      return getOrCreateSubDir(current, folderName);
+      return getOrCreateSubDir(current, 'Bible');
     }
 
     if (entries.has('Audio')) {
-      // We're at the Books level
       current = await getOrCreateSubDir(current, 'Audio');
-      current = await getOrCreateSubDir(current, 'Bible');
-      return getOrCreateSubDir(current, folderName);
+      return getOrCreateSubDir(current, 'Bible');
     }
 
     if (entries.has('Books')) {
-      // We're at the root level and Books already exists
       current = await getOrCreateSubDir(current, 'Books');
       current = await getOrCreateSubDir(current, 'Audio');
-      current = await getOrCreateSubDir(current, 'Bible');
-      return getOrCreateSubDir(current, folderName);
+      return getOrCreateSubDir(current, 'Bible');
     }
   } catch {
     // Ignore, proceed with full path creation
@@ -94,8 +98,19 @@ export async function getBookDirectory(
   // No existing structure detected — create the full path
   current = await getOrCreateSubDir(current, 'Books');
   current = await getOrCreateSubDir(current, 'Audio');
-  current = await getOrCreateSubDir(current, 'Bible');
-  return getOrCreateSubDir(current, folderName);
+  return getOrCreateSubDir(current, 'Bible');
+}
+
+export async function getBookDirectory(
+  rootHandle: FileSystemDirectoryHandle,
+  folderName: string
+): Promise<FileSystemDirectoryHandle> {
+  let bibleDir = bibleDirCache.get(rootHandle);
+  if (!bibleDir) {
+    bibleDir = await detectBibleDirectory(rootHandle);
+    bibleDirCache.set(rootHandle, bibleDir);
+  }
+  return getOrCreateSubDir(bibleDir, folderName);
 }
 
 export async function writeFile(
