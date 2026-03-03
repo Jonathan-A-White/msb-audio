@@ -20,9 +20,13 @@ export interface BulkProgress {
   currentBook: BookWithDerived;
 }
 
-// CORS proxy used as fallback when the direct fetch fails (e.g. missing
-// Access-Control-Allow-Origin header on openbible.com).
-const CORS_PROXY = 'https://corsproxy.io/?';
+// CORS proxies tried in order when the direct fetch fails (e.g. missing
+// Access-Control-Allow-Origin header on openbible.com, or proxy returning 403).
+export const CORS_PROXIES = [
+  (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  (url: string) =>
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+];
 
 function isCorsOrNetworkError(err: unknown): boolean {
   if (err instanceof TypeError && /failed to fetch/i.test(err.message)) {
@@ -40,13 +44,28 @@ export async function fetchWithFallback(
     const resp = await fetch(url, { signal });
     if (resp.ok) return resp;
   } catch (err) {
-    // Only fall through to proxy for CORS / network errors
+    // Only fall through to proxies for CORS / network errors
     if (!isCorsOrNetworkError(err)) throw err;
   }
 
-  // Attempt 2 — CORS proxy fallback
-  const proxied = `${CORS_PROXY}${encodeURIComponent(url)}`;
-  return fetch(proxied, { signal });
+  // Attempt 2+ — try each CORS proxy in order until one succeeds
+  let lastResponse: Response | undefined;
+  for (let i = 0; i < CORS_PROXIES.length; i++) {
+    const proxied = CORS_PROXIES[i](url);
+    try {
+      const resp = await fetch(proxied, { signal });
+      if (resp.ok) return resp;
+      lastResponse = resp;
+    } catch (err) {
+      // On the last proxy, rethrow so the caller sees the error
+      if (i === CORS_PROXIES.length - 1) throw err;
+      // Otherwise try the next proxy
+    }
+  }
+
+  // All proxies returned non-ok responses; return the last one so the
+  // caller can inspect the status code.
+  return lastResponse!;
 }
 
 export async function downloadBook(

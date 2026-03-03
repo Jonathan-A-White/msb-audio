@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { downloadBook, fetchWithFallback } from '../../src/lib/downloadManager';
+import { downloadBook, fetchWithFallback, CORS_PROXIES } from '../../src/lib/downloadManager';
 import { books } from '../../src/data/books';
 
 // Mock the fileSystem module
@@ -43,9 +43,45 @@ describe('downloadManager', () => {
       const resp = await fetchWithFallback('https://example.com/file.mp3');
       expect(resp.ok).toBe(true);
       expect(globalThis.fetch).toHaveBeenCalledTimes(2);
-      // Second call should use proxy URL
+      // Second call should use first proxy URL
       const secondCallUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[1][0];
       expect(secondCallUrl).toContain('corsproxy.io');
+    });
+
+    it('tries next proxy when first proxy returns non-ok', async () => {
+      globalThis.fetch = vi.fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))  // direct
+        .mockResolvedValueOnce({ ok: false, status: 403 })        // first proxy
+        .mockResolvedValueOnce({ ok: true });                     // second proxy
+
+      const resp = await fetchWithFallback('https://example.com/file.mp3');
+      expect(resp.ok).toBe(true);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1 + CORS_PROXIES.length);
+      // Third call should use allorigins proxy
+      const thirdCallUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[2][0];
+      expect(thirdCallUrl).toContain('allorigins');
+    });
+
+    it('tries next proxy when first proxy throws', async () => {
+      globalThis.fetch = vi.fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))  // direct
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))  // first proxy
+        .mockResolvedValueOnce({ ok: true });                     // second proxy
+
+      const resp = await fetchWithFallback('https://example.com/file.mp3');
+      expect(resp.ok).toBe(true);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('returns last non-ok response when all proxies fail with HTTP errors', async () => {
+      globalThis.fetch = vi.fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))  // direct
+        .mockResolvedValueOnce({ ok: false, status: 403 })        // first proxy
+        .mockResolvedValueOnce({ ok: false, status: 502 });       // second proxy
+
+      const resp = await fetchWithFallback('https://example.com/file.mp3');
+      expect(resp.ok).toBe(false);
+      expect(resp.status).toBe(502);
     });
 
     it('re-throws non-CORS errors without trying proxy', async () => {
@@ -176,10 +212,19 @@ describe('downloadManager', () => {
 
       const result = await downloadBook(genesis, mockRootHandle, onProgress);
       expect(result.success).toBe(true);
-      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     });
 
-    it('shows friendly message when both direct and proxy fetch fail', async () => {
+    it('succeeds via second proxy when direct and first proxy fail', async () => {
+      globalThis.fetch = vi.fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce({ ok: false, status: 403, statusText: 'Forbidden' })
+        .mockResolvedValueOnce(okResponse());
+
+      const result = await downloadBook(genesis, mockRootHandle, onProgress);
+      expect(result.success).toBe(true);
+    });
+
+    it('shows friendly message when direct and all proxy fetches fail', async () => {
       globalThis.fetch = vi.fn()
         .mockRejectedValue(new TypeError('Failed to fetch'));
 
