@@ -7,27 +7,21 @@ import { BookRow } from './BookRow';
 
 interface BookListProps {
   state: AllDownloadState;
-  importDisabled: boolean;
   onOpenInBrowser: (book: BookWithDerived) => void;
-  onImport: (book: BookWithDerived) => void;
 }
 
 interface SectionProps {
   title: string;
   books: BookWithDerived[];
   state: AllDownloadState;
-  importDisabled: boolean;
   onOpenInBrowser: (book: BookWithDerived) => void;
-  onImport: (book: BookWithDerived) => void;
 }
 
 function Section({
   title,
   books,
   state,
-  importDisabled,
   onOpenInBrowser,
-  onImport,
 }: SectionProps) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -49,9 +43,7 @@ function Section({
               key={book.number}
               book={book}
               bookState={getBookState(state, book.number)}
-              importDisabled={importDisabled}
               onOpenInBrowser={onOpenInBrowser}
-              onImport={onImport}
             />
           ))}
         </div>
@@ -60,24 +52,20 @@ function Section({
   );
 }
 
-export function BookList({ state, importDisabled, onOpenInBrowser, onImport }: BookListProps) {
+export function BookList({ state, onOpenInBrowser }: BookListProps) {
   return (
     <div className="book-list">
       <Section
         title="Old Testament"
         books={otBooks}
         state={state}
-        importDisabled={importDisabled}
         onOpenInBrowser={onOpenInBrowser}
-        onImport={onImport}
       />
       <Section
         title="New Testament"
         books={ntBooks}
         state={state}
-        importDisabled={importDisabled}
         onOpenInBrowser={onOpenInBrowser}
-        onImport={onImport}
       />
     </div>
   );

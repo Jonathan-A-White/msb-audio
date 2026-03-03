@@ -4,9 +4,7 @@ import type { BookDownloadState } from '../lib/downloadState';
 interface BookRowProps {
   book: BookWithDerived;
   bookState: BookDownloadState;
-  importDisabled: boolean;
   onOpenInBrowser: (book: BookWithDerived) => void;
-  onImport: (book: BookWithDerived) => void;
 }
 
 function formatNumber(n: number): string {
@@ -16,9 +14,7 @@ function formatNumber(n: number): string {
 export function BookRow({
   book,
   bookState,
-  importDisabled,
   onOpenInBrowser,
-  onImport,
 }: BookRowProps) {
   const { status, progress, error } = bookState;
 
@@ -54,21 +50,12 @@ export function BookRow({
         {status === 'downloading' ? (
           <span className="importing-label">Importing...</span>
         ) : (
-          <>
-            <button
-              className="btn btn-download-link"
-              onClick={() => onOpenInBrowser(book)}
-            >
-              Download
-            </button>
-            <button
-              className="btn btn-import"
-              disabled={importDisabled}
-              onClick={() => onImport(book)}
-            >
-              {status === 'complete' ? 'Import Again' : status === 'error' ? 'Retry Import' : 'Import'}
-            </button>
-          </>
+          <button
+            className="btn btn-download-link"
+            onClick={() => onOpenInBrowser(book)}
+          >
+            Download
+          </button>
         )}
       </div>
     </div>

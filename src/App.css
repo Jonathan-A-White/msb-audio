@@ -250,6 +250,21 @@
   line-height: 1.4;
 }
 
+.bulk-hint.scan-result {
+  margin-top: 10px;
+  margin-bottom: 0;
+  color: var(--color-error);
+  font-weight: 500;
+}
+
+.btn-bulk-secondary {
+  background: var(--color-gray-100);
+  color: var(--color-gray-700);
+  border: 1px solid var(--color-gray-300);
+  font-size: 0.75rem;
+  min-height: 40px;
+}
+
 /* Book Actions */
 .book-actions {
   display: flex;
