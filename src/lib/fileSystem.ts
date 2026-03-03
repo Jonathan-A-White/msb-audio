@@ -35,82 +35,58 @@ export async function clearSavedHandle(): Promise<void> {
   await del(DIR_HANDLE_KEY);
 }
 
-async function getOrCreateSubDir(
-  parent: FileSystemDirectoryHandle,
-  name: string
-): Promise<FileSystemDirectoryHandle> {
-  return parent.getDirectoryHandle(name, { create: true });
-}
-
-// Cache the Bible-level directory handle per root handle to avoid repeated
-// directory enumeration, which triggers stale-cache errors on mobile Chrome
-// when directory contents change between bulk-import iterations.
-const bibleDirCache = new WeakMap<FileSystemDirectoryHandle, FileSystemDirectoryHandle>();
+// Cache the *path* from root to the Bible directory (not the handle itself)
+// so we only enumerate once but always navigate with fresh handles.
+// Stale FileSystemDirectoryHandle objects cause errors on Android Chrome.
+const bibleDirPathCache = new WeakMap<FileSystemDirectoryHandle, string[]>();
 
 export function invalidateBibleDirCache(
   rootHandle: FileSystemDirectoryHandle
 ): void {
-  bibleDirCache.delete(rootHandle);
+  bibleDirPathCache.delete(rootHandle);
 }
 
-async function detectBibleDirectory(
+async function detectBibleDirectoryPath(
   rootHandle: FileSystemDirectoryHandle
-): Promise<FileSystemDirectoryHandle> {
-  // Detect which level of Books/Audio/Bible the user selected and navigate accordingly.
-  // Supported scenarios:
-  //   - User picks root (e.g. Internal storage) → create Books/Audio/Bible
-  //   - User picks "Books"                      → create Audio/Bible
-  //   - User picks "Audio"                      → create Bible
-  //   - User picks "Bible"                      → already at Bible level
-  let current = rootHandle;
-
+): Promise<string[]> {
+  // Detect which level of Books/Audio/Bible the user selected.
+  // Returns the subdirectory names needed to reach the Bible level.
   try {
     const entries = new Set<string>();
-    for await (const entry of current.values()) {
+    for await (const entry of rootHandle.values()) {
       entries.add(entry.name);
     }
 
     // If the directory already has numbered book folders (e.g. "43-John"), we're at Bible level
     const hasBookFolders = [...entries].some((name) => /^\d{2}-/.test(name));
-    if (hasBookFolders) {
-      return current;
-    }
+    if (hasBookFolders) return [];
 
-    // Detect intermediate levels by checking for known subdirectory names
-    if (entries.has('Bible')) {
-      return getOrCreateSubDir(current, 'Bible');
-    }
-
-    if (entries.has('Audio')) {
-      current = await getOrCreateSubDir(current, 'Audio');
-      return getOrCreateSubDir(current, 'Bible');
-    }
-
-    if (entries.has('Books')) {
-      current = await getOrCreateSubDir(current, 'Books');
-      current = await getOrCreateSubDir(current, 'Audio');
-      return getOrCreateSubDir(current, 'Bible');
-    }
+    if (entries.has('Bible')) return ['Bible'];
+    if (entries.has('Audio')) return ['Audio', 'Bible'];
+    if (entries.has('Books')) return ['Books', 'Audio', 'Bible'];
   } catch {
     // Ignore, proceed with full path creation
   }
 
-  // No existing structure detected — create the full path
-  current = await getOrCreateSubDir(current, 'Books');
-  current = await getOrCreateSubDir(current, 'Audio');
-  return getOrCreateSubDir(current, 'Bible');
+  return ['Books', 'Audio', 'Bible'];
 }
 
 export async function getBookDirectory(
   rootHandle: FileSystemDirectoryHandle,
   folderName: string
 ): Promise<FileSystemDirectoryHandle> {
-  let bibleDir = bibleDirCache.get(rootHandle);
-  if (!bibleDir) {
-    bibleDir = await detectBibleDirectory(rootHandle);
-    bibleDirCache.set(rootHandle, bibleDir);
+  let path = bibleDirPathCache.get(rootHandle);
+  if (!path) {
+    path = await detectBibleDirectoryPath(rootHandle);
+    bibleDirPathCache.set(rootHandle, path);
   }
-  return getOrCreateSubDir(bibleDir, folderName);
+
+  // Always navigate from root to get fresh handles (avoids stale handle errors)
+  let current = rootHandle;
+  for (const dir of path) {
+    current = await current.getDirectoryHandle(dir, { create: true });
+  }
+  return current.getDirectoryHandle(folderName, { create: true });
 }
 
 export async function writeFile(
@@ -122,8 +98,15 @@ export async function writeFile(
   const writable = await fileHandle.createWritable();
   try {
     await writable.write(data as unknown as BufferSource);
-  } finally {
     await writable.close();
+  } catch (err) {
+    // Abort discards the temporary write instead of committing empty/corrupt data
+    try {
+      await writable.abort();
+    } catch {
+      /* ignore abort errors */
+    }
+    throw err;
   }
 }
 
