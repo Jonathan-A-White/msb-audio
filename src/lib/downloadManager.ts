@@ -28,11 +28,64 @@ export const CORS_PROXIES = [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
 ];
 
+// Minimum valid MP3 file size (10 KB) — any Bible book audio will be much larger
+const MIN_MP3_SIZE = 10 * 1024;
+
+// Number of automatic retries for transient network errors
+const MAX_RETRIES = 2;
+
+// Delay between retries in ms (doubles each attempt: 1s, 2s)
+const RETRY_BASE_DELAY = 1000;
+
 function isCorsOrNetworkError(err: unknown): boolean {
-  if (err instanceof TypeError && /failed to fetch/i.test(err.message)) {
-    return true;
+  if (err instanceof TypeError) {
+    const msg = err.message.toLowerCase();
+    // Different browsers use different messages for network/CORS failures
+    if (
+      msg.includes('failed to fetch') ||
+      msg.includes('network') ||
+      msg.includes('networkerror') ||
+      msg.includes('load failed')
+    ) {
+      return true;
+    }
   }
   return false;
+}
+
+/**
+ * Validate that data starts with a valid MP3 header.
+ * Checks for ID3v2 tag ("ID3") or MPEG audio frame sync (0xFF 0xE0+).
+ */
+export function isValidMp3(data: Uint8Array): boolean {
+  if (data.length < 4) return false;
+
+  // ID3v2 tag: starts with "ID3" (0x49 0x44 0x33)
+  if (data[0] === 0x49 && data[1] === 0x44 && data[2] === 0x33) {
+    return true;
+  }
+
+  // MPEG audio frame sync: 0xFF followed by 0xE0+ (11 sync bits set)
+  if (data[0] === 0xff && (data[1] & 0xe0) === 0xe0) {
+    return true;
+  }
+
+  return false;
+}
+
+function isTransientError(err: unknown): boolean {
+  if (isCorsOrNetworkError(err)) return true;
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    if (msg.includes('network') || msg.includes('timeout') || msg.includes('econnreset')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function fetchWithFallback(
@@ -68,76 +121,41 @@ export async function fetchWithFallback(
   return lastResponse!;
 }
 
-export async function downloadBook(
+async function downloadBookOnce(
   book: BookWithDerived,
   rootHandle: FileSystemDirectoryHandle,
   onProgress: (progress: DownloadProgress) => void,
   abortSignal?: AbortSignal
 ): Promise<DownloadResult> {
-  try {
-    const response = await fetchWithFallback(book.url, abortSignal);
+  const response = await fetchWithFallback(book.url, abortSignal);
 
-    if (!response.ok) {
-      return {
-        bookNumber: book.number,
-        success: false,
-        error: `Server returned ${response.status} ${response.statusText}`,
-      };
-    }
+  if (!response.ok) {
+    return {
+      bookNumber: book.number,
+      success: false,
+      error: `Server returned ${response.status} ${response.statusText}`,
+    };
+  }
 
-    const contentLength = response.headers.get('content-length');
-    const total = contentLength ? parseInt(contentLength, 10) : 0;
+  const contentLength = response.headers.get('content-length');
+  const total = contentLength ? parseInt(contentLength, 10) : 0;
 
-    if (!response.body) {
-      return {
-        bookNumber: book.number,
-        success: false,
-        error: 'Response body is empty',
-      };
-    }
+  if (!response.body) {
+    return {
+      bookNumber: book.number,
+      success: false,
+      error: 'Response body is empty',
+    };
+  }
 
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let loaded = 0;
-    let done = false;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  let done = false;
 
-    while (!done) {
-      if (abortSignal?.aborted) {
-        reader.cancel();
-        return {
-          bookNumber: book.number,
-          success: false,
-          error: 'Download cancelled',
-        };
-      }
-
-      const result = await reader.read();
-      done = result.done ?? false;
-      const value = result.value;
-      if (done || !value) break;
-
-      chunks.push(value);
-      loaded += value.length;
-
-      const percent = total > 0 ? Math.round((loaded / total) * 100) : 0;
-      onProgress({ bookNumber: book.number, loaded, total, percent });
-    }
-
-    // Combine chunks into single array
-    const data = new Uint8Array(loaded);
-    let offset = 0;
-    for (const chunk of chunks) {
-      data.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    // Write to file system
-    const bookDir = await getBookDirectory(rootHandle, book.folderName);
-    await writeFile(bookDir, book.fileName, data);
-
-    return { bookNumber: book.number, success: true };
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
+  while (!done) {
+    if (abortSignal?.aborted) {
+      reader.cancel();
       return {
         bookNumber: book.number,
         success: false,
@@ -145,33 +163,140 @@ export async function downloadBook(
       };
     }
 
-    const message =
-      err instanceof Error ? err.message : 'Unknown error';
+    const result = await reader.read();
+    done = result.done ?? false;
+    const value = result.value;
+    if (done || !value) break;
 
-    // Detect storage full errors
-    if (message.includes('quota') || message.includes('storage')) {
-      return {
-        bookNumber: book.number,
-        success: false,
-        error: 'Storage full — free up space and try again',
-      };
-    }
+    chunks.push(value);
+    loaded += value.length;
 
-    // Provide a clearer message for CORS / network failures
-    if (/failed to fetch/i.test(message)) {
-      return {
-        bookNumber: book.number,
-        success: false,
-        error: 'Download failed: unable to reach the server. Check your connection and try again.',
-      };
-    }
+    const percent = total > 0 ? Math.round((loaded / total) * 100) : 0;
+    onProgress({ bookNumber: book.number, loaded, total, percent });
+  }
 
+  // Combine chunks into single array
+  const data = new Uint8Array(loaded);
+  let offset = 0;
+  for (const chunk of chunks) {
+    data.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  // Validate: content-length mismatch means a partial/truncated download
+  if (total > 0 && loaded !== total) {
     return {
       bookNumber: book.number,
       success: false,
-      error: `Download failed: ${message}`,
+      error: `Download incomplete: received ${loaded} of ${total} bytes. Try again.`,
     };
   }
+
+  // Validate: file is too small to be a real audio book
+  if (data.length < MIN_MP3_SIZE) {
+    return {
+      bookNumber: book.number,
+      success: false,
+      error: 'Download failed: file too small — server may have returned an error page. Try again.',
+    };
+  }
+
+  // Validate: data must start with a valid MP3 header (ID3 tag or sync word)
+  if (!isValidMp3(data)) {
+    return {
+      bookNumber: book.number,
+      success: false,
+      error: 'Download failed: received invalid data instead of audio. Try again.',
+    };
+  }
+
+  // Write to file system
+  const bookDir = await getBookDirectory(rootHandle, book.folderName);
+  await writeFile(bookDir, book.fileName, data);
+
+  return { bookNumber: book.number, success: true };
+}
+
+export async function downloadBook(
+  book: BookWithDerived,
+  rootHandle: FileSystemDirectoryHandle,
+  onProgress: (progress: DownloadProgress) => void,
+  abortSignal?: AbortSignal
+): Promise<DownloadResult> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const result = await downloadBookOnce(book, rootHandle, onProgress, abortSignal);
+
+      // If the download succeeded or was cancelled, return immediately
+      if (result.success || result.error === 'Download cancelled') {
+        return result;
+      }
+
+      // For non-retryable HTTP errors (4xx), return immediately
+      if (result.error?.startsWith('Server returned 4')) {
+        return result;
+      }
+
+      // For other errors, retry if we have attempts left
+      if (attempt < MAX_RETRIES) {
+        await delay(RETRY_BASE_DELAY * Math.pow(2, attempt));
+        // Reset progress before retrying
+        onProgress({ bookNumber: book.number, loaded: 0, total: 0, percent: 0 });
+        continue;
+      }
+
+      return result;
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return {
+          bookNumber: book.number,
+          success: false,
+          error: 'Download cancelled',
+        };
+      }
+
+      const message =
+        err instanceof Error ? err.message : 'Unknown error';
+
+      // Detect storage full errors — not retryable
+      if (message.includes('quota') || message.includes('storage')) {
+        return {
+          bookNumber: book.number,
+          success: false,
+          error: 'Storage full — free up space and try again',
+        };
+      }
+
+      // For transient network errors, retry if we have attempts left
+      if (isTransientError(err) && attempt < MAX_RETRIES) {
+        await delay(RETRY_BASE_DELAY * Math.pow(2, attempt));
+        onProgress({ bookNumber: book.number, loaded: 0, total: 0, percent: 0 });
+        continue;
+      }
+
+      // Provide a clearer message for CORS / network failures
+      if (isCorsOrNetworkError(err)) {
+        return {
+          bookNumber: book.number,
+          success: false,
+          error: 'Download failed: unable to reach the server. Check your connection and try again.',
+        };
+      }
+
+      return {
+        bookNumber: book.number,
+        success: false,
+        error: `Download failed: ${message}`,
+      };
+    }
+  }
+
+  // Should not reach here, but satisfy TypeScript
+  return {
+    bookNumber: book.number,
+    success: false,
+    error: 'Download failed after retries',
+  };
 }
 
 export async function downloadBulk(
