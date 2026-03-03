@@ -4,9 +4,9 @@ import type { BookDownloadState } from '../lib/downloadState';
 interface BookRowProps {
   book: BookWithDerived;
   bookState: BookDownloadState;
-  disabled: boolean;
-  onDownload: (book: BookWithDerived) => void;
-  onCancel: (bookNumber: number) => void;
+  importDisabled: boolean;
+  onOpenInBrowser: (book: BookWithDerived) => void;
+  onImport: (book: BookWithDerived) => void;
 }
 
 function formatNumber(n: number): string {
@@ -16,9 +16,9 @@ function formatNumber(n: number): string {
 export function BookRow({
   book,
   bookState,
-  disabled,
-  onDownload,
-  onCancel,
+  importDisabled,
+  onOpenInBrowser,
+  onImport,
 }: BookRowProps) {
   const { status, progress, error } = bookState;
 
@@ -52,28 +52,23 @@ export function BookRow({
 
       <div className="book-actions">
         {status === 'downloading' ? (
-          <button
-            className="btn btn-cancel-small"
-            onClick={() => onCancel(book.number)}
-          >
-            Cancel
-          </button>
-        ) : status === 'complete' ? (
-          <button
-            className="btn btn-again"
-            disabled={disabled}
-            onClick={() => onDownload(book)}
-          >
-            Download Again
-          </button>
+          <span className="importing-label">Importing...</span>
         ) : (
-          <button
-            className="btn btn-download"
-            disabled={disabled}
-            onClick={() => onDownload(book)}
-          >
-            {status === 'error' ? 'Retry' : 'Download'}
-          </button>
+          <>
+            <button
+              className="btn btn-download-link"
+              onClick={() => onOpenInBrowser(book)}
+            >
+              Download
+            </button>
+            <button
+              className="btn btn-import"
+              disabled={importDisabled}
+              onClick={() => onImport(book)}
+            >
+              {status === 'complete' ? 'Import Again' : status === 'error' ? 'Retry Import' : 'Import'}
+            </button>
+          </>
         )}
       </div>
     </div>

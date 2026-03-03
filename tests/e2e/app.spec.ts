@@ -33,12 +33,12 @@ test.describe('Directory Selection', () => {
     await expect(page.getByText('Revelation')).toBeVisible();
   });
 
-  test('download buttons are disabled when no folder selected', async ({
+  test('import button is disabled when no folder selected', async ({
     page,
   }) => {
     await page.goto('/');
-    const downloadBtn = page.getByRole('button', { name: 'Download All' });
-    await expect(downloadBtn).toBeDisabled();
+    const importBtn = page.getByRole('button', { name: /Import from Folder/i });
+    await expect(importBtn).toBeDisabled();
   });
 });
 

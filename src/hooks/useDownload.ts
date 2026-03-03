@@ -1,29 +1,26 @@
 import { useState, useCallback, useRef } from 'react';
 import type { BookWithDerived } from '../data/books';
-import { books, otBooks, ntBooks } from '../data/books';
 import {
   type AllDownloadState,
   loadState,
   setBookStatus,
-  getBookState,
 } from '../lib/downloadState';
 import {
-  downloadBook,
-  downloadBulk,
-  type DownloadProgress,
+  openInBrowser,
+  importBookFromData,
+  matchBookFromFilename,
   type BulkProgress,
 } from '../lib/downloadManager';
+import { pickMp3File, pickSourceDirectory, scanForMsbFiles } from '../lib/fileSystem';
 
 interface UseDownloadReturn {
   state: AllDownloadState;
   bulkProgress: BulkProgress | null;
-  isBulkDownloading: boolean;
-  downloadSingle: (book: BookWithDerived) => Promise<void>;
-  downloadAll: (redownload: boolean) => Promise<void>;
-  downloadOT: (redownload: boolean) => Promise<void>;
-  downloadNT: (redownload: boolean) => Promise<void>;
+  isBulkImporting: boolean;
+  openBookInBrowser: (book: BookWithDerived) => void;
+  importSingle: (book: BookWithDerived) => Promise<void>;
+  importFromFolder: () => Promise<void>;
   cancelBulk: () => void;
-  cancelSingle: (bookNumber: number) => void;
 }
 
 export function useDownload(
@@ -31,118 +28,118 @@ export function useDownload(
 ): UseDownloadReturn {
   const [state, setState] = useState<AllDownloadState>(loadState);
   const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
-  const [isBulkDownloading, setIsBulkDownloading] = useState(false);
+  const [isBulkImporting, setIsBulkImporting] = useState(false);
   const bulkAbortRef = useRef<AbortController | null>(null);
-  const singleAbortRefs = useRef<Map<number, AbortController>>(new Map());
 
-  const handleProgress = useCallback((progress: DownloadProgress) => {
-    setState((prev) =>
-      setBookStatus(prev, progress.bookNumber, 'downloading', progress.percent)
-    );
+  const openBookInBrowser = useCallback((book: BookWithDerived) => {
+    openInBrowser(book.url);
   }, []);
 
-  const downloadSingle = useCallback(
+  const importSingle = useCallback(
     async (book: BookWithDerived) => {
       if (!rootHandle) return;
 
-      const controller = new AbortController();
-      singleAbortRefs.current.set(book.number, controller);
+      let file: File;
+      try {
+        file = await pickMp3File();
+      } catch (err) {
+        // User cancelled the file picker
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        throw err;
+      }
 
-      setState((prev) => setBookStatus(prev, book.number, 'downloading', 0));
+      setState((prev) => setBookStatus(prev, book.number, 'downloading', 50));
 
-      const result = await downloadBook(
-        book,
-        rootHandle,
-        handleProgress,
-        controller.signal
-      );
+      try {
+        const data = new Uint8Array(await file.arrayBuffer());
+        const result = await importBookFromData(data, book, rootHandle);
 
-      singleAbortRefs.current.delete(book.number);
-
-      if (result.success) {
-        setState((prev) => setBookStatus(prev, book.number, 'complete', 100));
-      } else {
+        if (result.success) {
+          setState((prev) => setBookStatus(prev, book.number, 'complete', 100));
+        } else {
+          setState((prev) =>
+            setBookStatus(prev, book.number, 'error', 0, result.error)
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Import failed';
         setState((prev) =>
-          setBookStatus(prev, book.number, 'error', 0, result.error)
+          setBookStatus(prev, book.number, 'error', 0, message)
         );
       }
     },
-    [rootHandle, handleProgress]
+    [rootHandle]
   );
 
-  const cancelSingle = useCallback((bookNumber: number) => {
-    const controller = singleAbortRefs.current.get(bookNumber);
-    if (controller) {
-      controller.abort();
-      singleAbortRefs.current.delete(bookNumber);
+  const importFromFolder = useCallback(async () => {
+    if (!rootHandle) return;
+
+    let sourceHandle: FileSystemDirectoryHandle;
+    try {
+      sourceHandle = await pickSourceDirectory();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      throw err;
     }
-  }, []);
 
-  const startBulk = useCallback(
-    async (bookList: BookWithDerived[], redownload: boolean) => {
-      if (!rootHandle) return;
+    const controller = new AbortController();
+    bulkAbortRef.current = controller;
+    setIsBulkImporting(true);
 
-      const controller = new AbortController();
-      bulkAbortRef.current = controller;
-      setIsBulkDownloading(true);
+    try {
+      const msbFiles = await scanForMsbFiles(sourceHandle);
+      const entries = [...msbFiles.entries()];
 
-      const completedBooks = new Set<number>();
-      if (!redownload) {
-        for (const book of bookList) {
-          if (getBookState(state, book.number).status === 'complete') {
-            completedBooks.add(book.number);
-          }
-        }
+      // Filter to files that match known books
+      const matched: Array<{ book: BookWithDerived; file: File }> = [];
+      for (const [filename, file] of entries) {
+        const book = matchBookFromFilename(filename);
+        if (book) matched.push({ book, file });
       }
 
-      await downloadBulk(
-        bookList,
-        rootHandle,
-        !redownload,
-        completedBooks,
-        handleProgress,
-        (bp) => setBulkProgress(bp),
-        (result) => {
+      if (matched.length === 0) {
+        setIsBulkImporting(false);
+        setBulkProgress(null);
+        bulkAbortRef.current = null;
+        return;
+      }
+
+      for (let i = 0; i < matched.length; i++) {
+        if (controller.signal.aborted) break;
+
+        const { book, file } = matched[i];
+        setBulkProgress({
+          currentIndex: i + 1,
+          totalBooks: matched.length,
+          currentBook: book,
+        });
+
+        setState((prev) => setBookStatus(prev, book.number, 'downloading', 50));
+
+        try {
+          const data = new Uint8Array(await file.arrayBuffer());
+          const result = await importBookFromData(data, book, rootHandle);
+
           if (result.success) {
-            setState((prev) =>
-              setBookStatus(prev, result.bookNumber, 'complete', 100)
-            );
+            setState((prev) => setBookStatus(prev, book.number, 'complete', 100));
           } else {
             setState((prev) =>
-              setBookStatus(
-                prev,
-                result.bookNumber,
-                'error',
-                0,
-                result.error
-              )
+              setBookStatus(prev, book.number, 'error', 0, result.error)
             );
           }
-        },
-        controller.signal
-      );
-
-      setIsBulkDownloading(false);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Import failed';
+          setState((prev) =>
+            setBookStatus(prev, book.number, 'error', 0, message)
+          );
+        }
+      }
+    } finally {
+      setIsBulkImporting(false);
       setBulkProgress(null);
       bulkAbortRef.current = null;
-    },
-    [rootHandle, state, handleProgress]
-  );
-
-  const downloadAll = useCallback(
-    (redownload: boolean) => startBulk(books, redownload),
-    [startBulk]
-  );
-
-  const downloadOT = useCallback(
-    (redownload: boolean) => startBulk(otBooks, redownload),
-    [startBulk]
-  );
-
-  const downloadNT = useCallback(
-    (redownload: boolean) => startBulk(ntBooks, redownload),
-    [startBulk]
-  );
+    }
+  }, [rootHandle]);
 
   const cancelBulk = useCallback(() => {
     bulkAbortRef.current?.abort();
@@ -151,12 +148,10 @@ export function useDownload(
   return {
     state,
     bulkProgress,
-    isBulkDownloading,
-    downloadSingle,
-    downloadAll,
-    downloadOT,
-    downloadNT,
+    isBulkImporting,
+    openBookInBrowser,
+    importSingle,
+    importFromFolder,
     cancelBulk,
-    cancelSingle,
   };
 }
