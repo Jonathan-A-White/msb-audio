@@ -37,7 +37,7 @@ test.describe('Directory Selection', () => {
     page,
   }) => {
     await page.goto('/');
-    const importBtn = page.getByRole('button', { name: /Import Files/i });
+    const importBtn = page.getByRole('button', { name: /Pick Files Instead/i });
     await expect(importBtn).toBeDisabled();
   });
 });
