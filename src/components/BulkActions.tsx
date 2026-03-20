@@ -5,22 +5,26 @@ import { countByStatus } from '../lib/downloadState';
 interface BulkActionsProps {
   disabled: boolean;
   isBulkImporting: boolean;
+  isSyncing: boolean;
   bulkProgress: BulkProgress | null;
   state: AllDownloadState;
   lastScanCount: number | null;
   onScanAndImport: () => void;
   onImportFiles: () => void;
+  onSync: () => void;
   onCancelBulk: () => void;
 }
 
 export function BulkActions({
   disabled,
   isBulkImporting,
+  isSyncing,
   bulkProgress,
   state,
   lastScanCount,
   onScanAndImport,
   onImportFiles,
+  onSync,
   onCancelBulk,
 }: BulkActionsProps) {
   const allCounts = countByStatus(state);
@@ -65,6 +69,13 @@ export function BulkActions({
           onClick={onImportFiles}
         >
           Pick Files Instead
+        </button>
+        <button
+          className="btn btn-bulk-secondary"
+          disabled={disabled || isSyncing}
+          onClick={onSync}
+        >
+          {isSyncing ? 'Syncing\u2026' : 'Refresh Status'}
         </button>
       </div>
       {lastScanCount !== null && lastScanCount === 0 && (

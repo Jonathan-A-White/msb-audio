@@ -1,9 +1,11 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { BookWithDerived } from '../data/books';
+import { books } from '../data/books';
 import {
   type AllDownloadState,
   loadState,
   setBookStatus,
+  saveState,
 } from '../lib/downloadState';
 import {
   openInBrowser,
@@ -11,17 +13,19 @@ import {
   matchBookFromFilename,
   type BulkProgress,
 } from '../lib/downloadManager';
-import { pickMp3File, pickMp3Files, scanForMp3Files } from '../lib/fileSystem';
+import { pickMp3File, pickMp3Files, scanForMp3Files, scanExistingBooks } from '../lib/fileSystem';
 
 interface UseDownloadReturn {
   state: AllDownloadState;
   bulkProgress: BulkProgress | null;
   isBulkImporting: boolean;
+  isSyncing: boolean;
   lastScanCount: number | null;
   openBookInBrowser: (book: BookWithDerived) => void;
   importSingle: (book: BookWithDerived) => Promise<void>;
   importFiles: () => Promise<void>;
   scanAndImport: () => Promise<void>;
+  syncWithFileSystem: () => Promise<void>;
   cancelBulk: () => void;
 }
 
@@ -31,6 +35,7 @@ export function useDownload(
   const [state, setState] = useState<AllDownloadState>(loadState);
   const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
   const [isBulkImporting, setIsBulkImporting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [lastScanCount, setLastScanCount] = useState<number | null>(null);
   const bulkAbortRef = useRef<AbortController | null>(null);
 
@@ -202,6 +207,46 @@ export function useDownload(
     }
   }, [rootHandle]);
 
+  const syncWithFileSystem = useCallback(async () => {
+    if (!rootHandle) return;
+
+    setIsSyncing(true);
+    try {
+      const existingBooks = await scanExistingBooks(rootHandle, books);
+
+      setState((prev) => {
+        const newState = { ...prev };
+        for (const book of books) {
+          const current = prev[book.number];
+          if (existingBooks.has(book.number)) {
+            // File exists on disk — mark complete if it wasn't already
+            if (!current || current.status !== 'complete') {
+              newState[book.number] = { status: 'complete', progress: 100 };
+            }
+          } else {
+            // File missing — if we thought it was complete, reset
+            if (current?.status === 'complete') {
+              newState[book.number] = { status: 'not_started', progress: 0 };
+            }
+          }
+        }
+        saveState(newState);
+        return newState;
+      });
+    } catch (err) {
+      console.error('[sync] failed to sync with filesystem:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [rootHandle]);
+
+  // Auto-sync when a directory handle becomes available
+  useEffect(() => {
+    if (rootHandle) {
+      syncWithFileSystem();
+    }
+  }, [rootHandle, syncWithFileSystem]);
+
   const cancelBulk = useCallback(() => {
     bulkAbortRef.current?.abort();
   }, []);
@@ -210,11 +255,13 @@ export function useDownload(
     state,
     bulkProgress,
     isBulkImporting,
+    isSyncing,
     lastScanCount,
     openBookInBrowser,
     importSingle,
     importFiles,
     scanAndImport,
+    syncWithFileSystem,
     cancelBulk,
   };
 }

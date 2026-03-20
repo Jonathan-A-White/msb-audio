@@ -19,10 +19,12 @@ export function App() {
     state,
     bulkProgress,
     isBulkImporting,
+    isSyncing,
     lastScanCount,
     openBookInBrowser,
     importFiles,
     scanAndImport,
+    syncWithFileSystem,
     cancelBulk,
   } = useDownload(handle);
 
@@ -39,11 +41,13 @@ export function App() {
       <BulkActions
         disabled={!handle || !isSupported}
         isBulkImporting={isBulkImporting}
+        isSyncing={isSyncing}
         bulkProgress={bulkProgress}
         state={state}
         lastScanCount={lastScanCount}
         onScanAndImport={scanAndImport}
         onImportFiles={importFiles}
+        onSync={syncWithFileSystem}
         onCancelBulk={cancelBulk}
       />
 
