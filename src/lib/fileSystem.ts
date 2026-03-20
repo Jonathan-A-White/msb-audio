@@ -110,6 +110,48 @@ export async function writeFile(
   }
 }
 
+/**
+ * Scan the Bible directory for existing book folders and MP3 files.
+ * Returns a Set of book numbers that have their MP3 file present on disk.
+ */
+export async function scanExistingBooks(
+  rootHandle: FileSystemDirectoryHandle,
+  expectedBooks: Array<{ number: number; folderName: string; fileName: string }>,
+): Promise<Set<number>> {
+  const found = new Set<number>();
+
+  // Navigate to the Bible-level directory
+  let path: string[];
+  try {
+    path = await detectBibleDirectoryPath(rootHandle);
+  } catch {
+    return found;
+  }
+
+  let bibleDir: FileSystemDirectoryHandle = rootHandle;
+  for (const dir of path) {
+    try {
+      bibleDir = await bibleDir.getDirectoryHandle(dir);
+    } catch {
+      // Directory doesn't exist yet — nothing downloaded
+      return found;
+    }
+  }
+
+  // Check each book folder for its MP3 file
+  for (const book of expectedBooks) {
+    try {
+      const bookDir = await bibleDir.getDirectoryHandle(book.folderName);
+      await bookDir.getFileHandle(book.fileName);
+      found.add(book.number);
+    } catch {
+      // Folder or file doesn't exist — not downloaded
+    }
+  }
+
+  return found;
+}
+
 export async function pickMp3File(): Promise<File> {
   const [handle] = await window.showOpenFilePicker({
     types: [{ description: 'MP3 audio files', accept: { 'audio/mpeg': ['.mp3'] } }],
